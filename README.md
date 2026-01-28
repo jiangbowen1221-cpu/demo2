@@ -76,4 +76,5 @@ npm run dev
 ## 📄 版权信息 (License & Copyright)
 
 本系统所有权归属于 **行至智能**。
+**核心开发者**: Bowen (行至智能 - AI 研发部)
 © 2026 行至智能. All rights reserved.
