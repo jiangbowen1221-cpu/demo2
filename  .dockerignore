@@ -1,0 +1,11 @@
+**/node_modules
+**/__pycache__
+**/.env
+**/dist
+**/build
+**/.git
+**/uploads
+backend/static
+frontend/node_modules
+backend/__pycache__
+*.db
