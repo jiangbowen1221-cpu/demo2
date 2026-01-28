@@ -71,5 +71,9 @@ npm run dev
 - [x] 项目初始化
 - [x] 基础 LLM 服务集成
 - [ ] 完善文档生成 Prompt 链
-- [ ] 实现文档审核工作流
-- [ ] 开发代码生成器
+---
+
+## 📄 版权信息 (License & Copyright)
+
+本系统所有权归属于 **行至智能**。
+© 2026 行至智能. All rights reserved.
