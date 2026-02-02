@@ -32,6 +32,10 @@ def create_project(project: ProjectCreate, session: Session = Depends(get_sessio
 @router.get("/projects/", response_model=List[ProjectRead])
 def read_projects(offset: int = 0, limit: int = 100, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     projects = session.exec(select(Project).where(Project.user_id == current_user.id).offset(offset).limit(limit).order_by(Project.updated_at.desc())).all()
+    # 临时调试日志
+    print(f"DEBUG: User {current_user.id} ({current_user.username}) has {len(projects)} projects.")
+    for p in projects:
+        print(f" - Project ID: {p.id}, Name: {p.name}, Updated: {p.updated_at}")
     return projects
 
 @router.get("/projects/{project_id}", response_model=ProjectRead)

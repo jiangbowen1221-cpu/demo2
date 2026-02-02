@@ -121,6 +121,111 @@ const fetchStream = async (url, body, onChunk, onDone, onError, signal) => {
   }
 };
 
+const SingleEditor = ({ content, setContent, title, onSave }) => {
+    // 默认开启预览模式，除非内容为空
+    const [isPreview, setIsPreview] = useState(!!content);
+    
+    // 当内容从无到有变化时（例如刚生成完），自动切换到预览
+    useEffect(() => {
+        if (content && !isPreview) {
+             // 这里可以加个逻辑，如果用户正在输入就不切，如果是生成的就切
+             // 简化处理：只要有内容且用户未显式切换过，初始化时默认预览
+        }
+    }, [content]);
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1D1F21' }}>
+          <div style={{ padding: '12px 24px', borderBottom: '1px solid #3B4E53', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1D1F21' }}>
+              <Title level={5} style={{ margin: 0, color: '#fff' }}>{title}</Title>
+              <Space>
+                  <Button 
+                      type={isPreview ? 'default' : 'primary'}
+                      size="small"
+                      onClick={() => setIsPreview(!isPreview)}
+                      icon={isPreview ? <FileTextOutlined /> : <FileMarkdownOutlined />}
+                      style={{ 
+                          background: isPreview ? 'transparent' : '#0FB698', 
+                          borderColor: isPreview ? '#3B4E53' : '#0FB698', 
+                          color: isPreview ? 'rgba(255,255,255,0.65)' : '#fff' 
+                      }}
+                  >
+                      {isPreview ? '编辑内容' : '查看文档'}
+                  </Button>
+                  <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
+                      {isPreview ? '当前为阅读模式' : '当前为编辑模式，内容将自动保存'}
+                  </Text>
+              </Space>
+          </div>
+          <div style={{ flex: 1, padding: '24px', overflowY: 'auto', background: '#1D1F21' }}>
+              {isPreview ? (
+                  <div className="markdown-preview" style={{ 
+                      color: '#e0e0e0', 
+                      lineHeight: '1.8',
+                      maxWidth: '900px',
+                      margin: '0 auto',
+                      padding: '20px',
+                      background: '#2b2d31',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                  }}>
+                      <ReactMarkdown
+                        components={{
+                            h1: ({node, ...props}) => <h1 style={{ color: '#fff', borderBottom: '1px solid #3B4E53', paddingBottom: '10px', marginTop: '24px' }} {...props} />,
+                            h2: ({node, ...props}) => <h2 style={{ color: '#0FB698', marginTop: '20px' }} {...props} />,
+                            h3: ({node, ...props}) => <h3 style={{ color: '#fff', marginTop: '16px' }} {...props} />,
+                            p: ({node, ...props}) => <p style={{ marginBottom: '16px', fontSize: '15px' }} {...props} />,
+                            ul: ({node, ...props}) => <ul style={{ paddingLeft: '24px', marginBottom: '16px' }} {...props} />,
+                            li: ({node, ...props}) => <li style={{ marginBottom: '8px' }} {...props} />,
+                            code: ({node, inline, className, children, ...props}) => {
+                                const match = /language-(\w+)/.exec(className || '')
+                                return !inline ? (
+                                    <div style={{ background: '#111315', padding: '12px', borderRadius: '6px', margin: '12px 0', border: '1px solid #3B4E53', overflowX: 'auto' }}>
+                                        <code className={className} style={{ fontFamily: 'monospace', fontSize: '14px' }} {...props}>
+                                            {children}
+                                        </code>
+                                    </div>
+                                ) : (
+                                    <code className={className} style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 4px', borderRadius: '4px', fontFamily: 'monospace' }} {...props}>
+                                        {children}
+                                    </code>
+                                )
+                            },
+                            table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', margin: '16px 0', border: '1px solid #3B4E53' }} {...props} />,
+                            th: ({node, ...props}) => <th style={{ background: '#3B4E53', padding: '10px', border: '1px solid #4a5f65', color: '#fff', textAlign: 'left' }} {...props} />,
+                            td: ({node, ...props}) => <td style={{ padding: '10px', border: '1px solid #3B4E53', color: '#e0e0e0' }} {...props} />,
+                            blockquote: ({node, ...props}) => <blockquote style={{ borderLeft: '4px solid #0FB698', paddingLeft: '16px', margin: '16px 0', color: 'rgba(255,255,255,0.6)' }} {...props} />,
+                        }}
+                      >
+                          {content || '*暂无内容，请点击右上角切换到编辑模式输入，或通过左侧对话生成。*'}
+                      </ReactMarkdown>
+                  </div>
+              ) : (
+                  <TextArea 
+                      value={content} 
+                      onChange={e => setContent(e.target.value)} 
+                      placeholder={`在此输入或生成 ${title}...`}
+                      autoSize={false}
+                      style={{ 
+                          width: '100%',
+                          height: '100%',
+                          border: 'none', 
+                          resize: 'none', 
+                          fontSize: '15px', 
+                          lineHeight: '1.8',
+                          padding: '0',
+                          boxShadow: 'none',
+                          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+                          color: '#fff',
+                          background: '#1D1F21'
+                      }}
+                      onBlur={onSave}
+                  />
+              )}
+          </div>
+      </div>
+    );
+};
+
 const App = () => {
   const [isPublicPreview, setIsPublicPreview] = useState(window.location.pathname.startsWith('/preview/'));
   const [publicData, setPublicData] = useState(null);
@@ -388,13 +493,69 @@ const App = () => {
       </script>
     `;
 
+    const reportPrintStyle = type === 'report' ? `
+      <style>
+        @media print {
+            @page {
+                size: landscape;
+                margin: 0;
+            }
+            html, body {
+                width: 100%;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                background-color: white !important;
+            }
+            /* 强制显示所有幻灯片 */
+            .slide-page, section, .slide, .swiper-slide {
+                display: block !important;
+                position: relative !important;
+                width: 100% !important;
+                height: 100vh !important;
+                page-break-after: always !important;
+                break-after: page !important;
+                opacity: 1 !important;
+                visibility: visible !important;
+                transform: none !important;
+                left: auto !important;
+                top: auto !important;
+                overflow: hidden !important;
+                margin: 0 !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+            /* 隐藏导航和无关元素 */
+            button, .nav-controls, .pagination, .swiper-pagination, .swiper-button-next, .swiper-button-prev, .controls {
+                display: none !important;
+            }
+            /* 重置滚动容器 */
+            .scroll-container, .swiper-wrapper {
+                transform: none !important;
+                width: auto !important;
+                height: auto !important;
+                overflow: visible !important;
+                display: block !important;
+            }
+            /* 修复背景色打印问题 */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+        }
+      </style>
+    ` : '';
+
     const configScript = type === 'demo' ? `<script>window.PROJECT_ID = ${currentProjectId};</script>` : '';
     
     // 注入逻辑：尝试在 </body> 前注入，如果没有 body 则加在最后
     if (code.includes('</body>')) {
-      return code.replace('</body>', `${configScript}${selectionScript}</body>`);
+      return code.replace('</body>', `${configScript}${reportPrintStyle}${selectionScript}</body>`);
     } else {
-      return code + configScript + selectionScript;
+      return code + configScript + reportPrintStyle + selectionScript;
     }
   };
   const fetchLicenses = async () => {
@@ -622,10 +783,10 @@ const App = () => {
     }
   };
 
-  const saveProject = async (stepKey, content) => {
+  const saveProject = async (stepKey, content, chatHistory = null) => {
     const token = localStorage.getItem('token');
     if (!token) {
-        message.warning('请先登录以保存项目');
+        if (!chatHistory) message.warning('请先登录以保存项目'); // Only warn if explicit save
         return;
     }
 
@@ -635,6 +796,7 @@ const App = () => {
     if (stepKey === 'tech') data.tech_doc = content;
     if (stepKey === 'demo') data.demo_code = content;
     if (stepKey === 'report') data.report_content = content;
+    if (chatHistory) data.chat_history = JSON.stringify(chatHistory);
     
     if (stepKey === 'requirements' && !currentProjectId) {
          data.name = content.substring(0, 20).trim() || '新项目';
@@ -645,7 +807,7 @@ const App = () => {
         await axios.patch(`/api/v1/generation/projects/${currentProjectId}`, data, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-      } else {
+      } else if (stepKey) { // Only create new project if saving content, not just chat
         const res = await axios.post('/api/v1/generation/projects/', {
           name: data.name || '新项目', 
           ...data
@@ -677,10 +839,19 @@ const App = () => {
       setDemoPreviewCode(p.demo_code || ''); // 初始化预览代码
       setReportContent(p.report_content || '');
       
-      // Reset Chat
-      setMessages([
-        { role: 'assistant', content: `已加载项目: ${p.name}。我们可以继续完善它。` }
-      ]);
+      // Reset Chat or Load History
+      if (p.chat_history && p.chat_history !== "[]") {
+          try {
+              setMessages(JSON.parse(p.chat_history));
+          } catch (e) {
+              console.error("Failed to parse chat history", e);
+              setMessages([{ role: 'assistant', content: `已加载项目: ${p.name}。我们可以继续完善它。` }]);
+          }
+      } else {
+          setMessages([
+            { role: 'assistant', content: `已加载项目: ${p.name}。我们可以继续完善它。` }
+          ]);
+      }
       
       // Determine tab
       if (p.report_content) setActiveTab('report');
@@ -939,6 +1110,15 @@ const App = () => {
     }
   };
 
+  useEffect(() => {
+    if (currentProjectId && messages.length > 0) {
+        const timer = setTimeout(() => {
+            saveProject(null, null, messages);
+        }, 2000);
+        return () => clearTimeout(timer);
+    }
+  }, [messages, currentProjectId]);
+
   const handleChatSubmit = async () => {
     if (!chatInput.trim()) return;
     const userMsg = chatInput;
@@ -1037,7 +1217,9 @@ const App = () => {
         {messages.map((msg, idx) => (
           <div key={idx} style={{ 
               alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-              maxWidth: '85%'
+              maxWidth: '85%',
+              wordBreak: 'break-word',
+              overflowWrap: 'break-word'
           }}>
             <div style={{ 
                 background: msg.role === 'user' ? '#0FB698' : '#3B4E53',
@@ -1099,19 +1281,21 @@ const App = () => {
           </div>
         )}
 
-        <div style={{ position: 'relative', marginBottom: 8 }}>
+        <div style={{ 
+            background: '#111315', 
+            border: '1px solid #3B4E53', 
+            borderRadius: '6px',
+            marginBottom: '8px',
+            display: 'flex',
+            flexDirection: 'column'
+        }}>
           {/* 类似 Trae 的内嵌标签 (Context Tag Inside) */}
           {activeTab === 'demo' && selectedElements.length > 0 && isSelectionConfirmed && (
             <div style={{ 
-              position: 'absolute',
-              top: '8px',
-              left: '8px',
-              zIndex: 10,
+              padding: '8px 8px 0 8px',
               display: 'flex',
               flexWrap: 'wrap',
               gap: '6px',
-              maxWidth: 'calc(100% - 16px)',
-              pointerEvents: 'none'
             }}>
               {selectedElements.map((el, idx) => (
                 <div 
@@ -1128,13 +1312,17 @@ const App = () => {
                     border: '1px solid #0FB698',
                     fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace',
                     pointerEvents: 'auto',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis'
                   }}
                 >
-                  <AimOutlined style={{ fontSize: '12px', color: '#00ECC8' }} />
-                  <span>{el.traceId || el.selector.split('>').pop().trim()}</span>
+                  <AimOutlined style={{ fontSize: '12px', color: '#00ECC8', flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{el.traceId || el.selector.split('>').pop().trim()}</span>
                   <CloseOutlined 
-                    style={{ fontSize: '9px', cursor: 'pointer', marginLeft: '4px', color: 'rgba(255,255,255,0.45)' }} 
+                    style={{ fontSize: '9px', cursor: 'pointer', marginLeft: '4px', color: 'rgba(255,255,255,0.45)', flexShrink: 0 }} 
                     onClick={() => {
                       const newElements = selectedElements.filter((_, i) => i !== idx);
                       setSelectedElements(newElements);
@@ -1158,11 +1346,12 @@ const App = () => {
                   }
               }}
               style={{ 
-                paddingTop: isSelectionConfirmed && selectedElements.length > 0 ? '36px' : '8px',
-                transition: 'all 0.2s',
-                background: '#111315',
+                padding: '8px',
+                border: 'none',
+                boxShadow: 'none',
+                background: 'transparent',
                 color: '#fff',
-                borderColor: '#3B4E53'
+                resize: 'none'
               }}
           />
         </div>
@@ -1255,34 +1444,12 @@ const App = () => {
   };
 
   const renderSingleEditor = (content, setContent, title) => (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1D1F21' }}>
-          <div style={{ padding: '12px 24px', borderBottom: '1px solid #3B4E53', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1D1F21' }}>
-              <Title level={5} style={{ margin: 0, color: '#fff' }}>{title}</Title>
-              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>提示：点击下方即可直接修改内容，系统会自动保存</Text>
-          </div>
-          <div style={{ flex: 1, padding: '24px', overflowY: 'auto', background: '#1D1F21' }}>
-              <TextArea 
-                  value={content} 
-                  onChange={e => setContent(e.target.value)} 
-                  placeholder={`在此输入或生成 ${title}...`}
-                  autoSize={false}
-                  style={{ 
-                      width: '100%',
-                      height: '100%',
-                      border: 'none', 
-                      resize: 'none', 
-                      fontSize: '15px', 
-                      lineHeight: '1.8',
-                      padding: 0,
-                      boxShadow: 'none',
-                      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-                      color: '#fff',
-                      background: '#1D1F21'
-                  }}
-                  onBlur={() => saveProject(activeTab, content)}
-              />
-          </div>
-      </div>
+      <SingleEditor 
+          content={content} 
+          setContent={setContent} 
+          title={title} 
+          onSave={() => saveProject(activeTab, content)} 
+      />
   );
 
   const renderReport = () => (
@@ -1342,7 +1509,7 @@ const App = () => {
               </Space>
           </div>
           <div style={{ flex: 1, background: '#111315', padding: '20px', overflow: 'hidden', position: 'relative' }}>
-              {loading && !reportContent && (
+              {loading && (
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(17,19,21,0.7)' }}>
                       <Spin size="large" tip="正在为您生成精美汇报报告..." />
                   </div>
@@ -1580,17 +1747,7 @@ const App = () => {
            <Button type="primary" onClick={() => setShowLogin(true)} style={{ background: '#0FB698', borderColor: '#0FB698' }}>登录 / 注册</Button>
          )}
          <Button icon={<PlusOutlined />} type="primary" onClick={createNewProject} style={{ background: '#0FB698', borderColor: '#0FB698' }}>新建项目</Button>
-         <SelectProject projects={projects} currentId={currentProjectId} onSelect={loadProject} onDelete={(id, e) => {
-           e.stopPropagation();
-           Modal.confirm({
-             title: '确定要删除这个项目吗？',
-             content: '删除后数据将无法恢复。',
-             okText: '确认删除',
-             okType: 'danger',
-             cancelText: '取消',
-             onOk: () => deleteProject(id)
-           });
-         }} />
+         <SelectProject projects={projects} currentId={currentProjectId} onSelect={loadProject} onDelete={deleteProject} />
        </Space>
      </Header>
    );

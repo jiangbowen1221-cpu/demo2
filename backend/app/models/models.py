@@ -33,6 +33,7 @@ class Project(SQLModel, table=True):
     tech_doc: Optional[str] = None
     demo_code: Optional[str] = None
     report_content: Optional[str] = None
+    chat_history: Optional[str] = Field(default="[]") # 存储对话历史 JSON 字符串
     share_token: Optional[str] = Field(default=None, index=True) # 发布分享用的 Token
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -66,6 +67,7 @@ class ProjectUpdate(SQLModel):
     tech_doc: Optional[str] = None
     demo_code: Optional[str] = None
     report_content: Optional[str] = None
+    chat_history: Optional[str] = None
 
 class ProjectRead(Project):
     pass
