@@ -11,11 +11,7 @@ class Settings(BaseSettings):
     DEFAULT_MODEL: str = "glm-4.7"
     
     # CORS
-    BACKEND_CORS_ORIGINS: list[str] = [
-        "http://localhost:5173", 
-        "http://localhost:5174", 
-        "http://localhost:3000"
-    ]
+    BACKEND_CORS_ORIGINS: list[str] = ["*"]
 
     class Config:
         env_file = ".env"

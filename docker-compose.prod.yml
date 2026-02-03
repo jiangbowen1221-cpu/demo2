@@ -2,12 +2,13 @@ version: "3.8"
 
 services:
   demo-generator:
-    build: .
+    image: demo-generator:latest
+    container_name: demo-generator
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/data:/app/data
-      - ./backend/uploads:/app/uploads
+      - ./data:/app/data
+      - ./uploads:/app/uploads
     env_file:
       - .env
     environment:
