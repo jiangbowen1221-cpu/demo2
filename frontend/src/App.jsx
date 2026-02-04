@@ -190,10 +190,10 @@ const SingleEditor = ({ content, setContent, title, onSave }) => {
                                     </code>
                                 )
                             },
-                            table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', margin: '16px 0', border: '1px solid #3B4E53' }} {...props} />,
-                            th: ({node, ...props}) => <th style={{ background: '#3B4E53', padding: '10px', border: '1px solid #4a5f65', color: '#fff', textAlign: 'left' }} {...props} />,
-                            td: ({node, ...props}) => <td style={{ padding: '10px', border: '1px solid #3B4E53', color: '#e0e0e0' }} {...props} />,
-                            blockquote: ({node, ...props}) => <blockquote style={{ borderLeft: '4px solid #0FB698', paddingLeft: '16px', margin: '16px 0', color: 'rgba(255,255,255,0.6)' }} {...props} />,
+                            table: ({node, ...props}) => <table style={{ width: '100%', borderCollapse: 'collapse', margin: '16px 0', border: '1px solid #3B4E53', fontSize: '14px' }} {...props} />,
+                            th: ({node, ...props}) => <th style={{ background: '#3B4E53', padding: '12px', border: '1px solid #4a5f65', color: '#fff', textAlign: 'left', fontWeight: '600' }} {...props} />,
+                            td: ({node, ...props}) => <td style={{ padding: '12px', border: '1px solid #3B4E53', color: '#e0e0e0', verticalAlign: 'top' }} {...props} />,
+                            blockquote: ({node, ...props}) => <blockquote style={{ borderLeft: '4px solid #0FB698', paddingLeft: '16px', margin: '16px 0', color: 'rgba(255,255,255,0.7)', fontStyle: 'italic', background: 'rgba(15,182,152,0.05)', padding: '12px 16px', borderRadius: '0 4px 4px 0' }} {...props} />,
                         }}
                       >
                           {content || '*暂无内容，请点击右上角切换到编辑模式输入，或通过左侧对话生成。*'}
@@ -435,58 +435,74 @@ const App = () => {
             if (hoveredElement.getAttribute('data-selected') !== 'true') {
               hoveredElement.setAttribute('data-selection-hover', 'true');
             }
-          });
+          }, true);
 
-          document.addEventListener('click', (e) => {
+          // 拦截所有可能的交互事件
+          const preventInteraction = (e) => {
             if (!isSelectionMode) return;
             e.preventDefault();
             e.stopPropagation();
-            
-            // 向上寻找最近的带有 data-trace-id 的元素
-            let el = e.target;
-            let traceId = el.getAttribute('data-trace-id');
-            
-            // 如果当前点击的元素没有 ID，就往父级找，最多找 5 层
-            let depth = 0;
-            while (!traceId && el.parentElement && depth < 5) {
-              el = el.parentElement;
-              traceId = el.getAttribute('data-trace-id');
-              depth++;
-            }
-            
-            const isSelected = el.getAttribute('data-selected') === 'true';
-            
-            if (isSelected) {
-              el.removeAttribute('data-selected');
-            } else {
-              el.setAttribute('data-selected', 'true');
-            }
+            e.stopImmediatePropagation();
+          };
 
-            // 获取选择器（备用）
-            const getSelector = (element) => {
-              if (element.id) return '#' + element.id;
-              let path = [];
-              let current = element;
-              while (current && current.nodeType === Node.ELEMENT_NODE) {
-                let selector = current.nodeName.toLowerCase();
-                let index = 1;
-                let sibling = current.previousElementSibling;
-                while (sibling) {
-                  if (sibling.nodeName === current.nodeName) index++;
-                  sibling = sibling.previousElementSibling;
+          ['mousedown', 'mouseup', 'click', 'dblclick', 'submit', 'focus'].forEach(eventType => {
+             document.addEventListener(eventType, (e) => {
+                if (!isSelectionMode) return;
+                
+                // 只有 click 事件需要执行选择逻辑，其他事件纯粹为了拦截交互
+                if (eventType === 'click') {
+                    preventInteraction(e);
+                    
+                    // 向上寻找最近的带有 data-trace-id 的元素
+                    let el = e.target;
+                    let traceId = el.getAttribute('data-trace-id');
+                    
+                    // 如果当前点击的元素没有 ID，就往父级找，最多找 5 层
+                    let depth = 0;
+                    while (!traceId && el.parentElement && depth < 5) {
+                      el = el.parentElement;
+                      traceId = el.getAttribute('data-trace-id');
+                      depth++;
+                    }
+                    
+                    const isSelected = el.getAttribute('data-selected') === 'true';
+                    
+                    if (isSelected) {
+                      el.removeAttribute('data-selected');
+                    } else {
+                      el.setAttribute('data-selected', 'true');
+                    }
+
+                    // 获取选择器（备用）
+                    const getSelector = (element) => {
+                      if (element.id) return '#' + element.id;
+                      let path = [];
+                      let current = element;
+                      while (current && current.nodeType === Node.ELEMENT_NODE) {
+                        let selector = current.nodeName.toLowerCase();
+                        let index = 1;
+                        let sibling = current.previousElementSibling;
+                        while (sibling) {
+                          if (sibling.nodeName === current.nodeName) index++;
+                          sibling = sibling.previousElementSibling;
+                        }
+                        path.unshift(selector + ":nth-of-type(" + index + ")");
+                        current = current.parentElement;
+                      }
+                      return path.join(" > ");
+                    };
+
+                    window.parent.postMessage({
+                      type: 'ELEMENT_SELECTED',
+                      selector: getSelector(el),
+                      traceId: traceId,
+                      html: el.outerHTML
+                    }, '*');
+                } else {
+                    // 其他事件直接拦截
+                    preventInteraction(e);
                 }
-                path.unshift(selector + ":nth-of-type(" + index + ")");
-                current = current.parentElement;
-              }
-              return path.join(" > ");
-            };
-
-            window.parent.postMessage({
-              type: 'ELEMENT_SELECTED',
-              selector: getSelector(el),
-              traceId: traceId,
-              html: el.outerHTML
-            }, '*');
+             }, true); // 使用捕获阶段，确保最先执行
           });
           ` : ''}
         })();
@@ -495,6 +511,53 @@ const App = () => {
 
     const reportPrintStyle = type === 'report' ? `
       <style>
+        /* 屏幕显示样式优化 - 强制覆盖所有幻灯片行为 */
+        @media screen {
+            html, body {
+                height: auto !important;
+                min-height: 100% !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+                background-color: #f0f2f5 !important;
+                margin: 0 !important;
+                padding: 20px 0 !important;
+            }
+            
+            /* 暴力重置所有常见的容器和页面 */
+            .reveal, .slides, .swiper-container, .swiper-wrapper, .slide-page, section, .section, .slide, [class*="slide"] {
+                display: block !important;
+                position: relative !important;
+                height: auto !important;
+                min-height: 600px !important;
+                width: 90% !important;
+                max-width: 1000px !important;
+                margin: 0 auto 30px auto !important;
+                transform: none !important;
+                top: auto !important;
+                left: auto !important;
+                right: auto !important;
+                bottom: auto !important;
+                overflow: visible !important;
+                opacity: 1 !important;
+                visibility: visible !important;
+                background: white !important;
+                color: black !important;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+                border-radius: 8px !important;
+                padding: 40px !important;
+                box-sizing: border-box !important;
+            }
+
+            /* 隐藏所有导航控制元素 */
+            .controls, .navigate-right, .navigate-left, .progress, .swiper-pagination, .swiper-button-next, .swiper-button-prev {
+                display: none !important;
+            }
+            
+            /* 确保内容不被裁剪 */
+            * {
+                max-height: none !important;
+            }
+        }
         @media print {
             @page {
                 size: landscape;
@@ -510,28 +573,47 @@ const App = () => {
                 print-color-adjust: exact !important;
                 background-color: white !important;
             }
-            /* 强制显示所有幻灯片 */
-            .slide-page, section, .slide, .swiper-slide {
+            /* 强制打印样式与屏幕预览保持一致 */
+            .reveal, .slides, .swiper-container, .swiper-wrapper, .slide-page, section, .section, .slide, [class*="slide"] {
                 display: block !important;
                 position: relative !important;
                 width: 100% !important;
-                height: 100vh !important;
+                height: auto !important; /* 不再强制 100vh，允许内容自然撑开 */
+                min-height: 90vh !important; /* 保持每页的充实感 */
                 page-break-after: always !important;
                 break-after: page !important;
+                page-break-inside: avoid !important;
+                
+                /* 视觉风格同步 */
+                /* background: white !important; 移除强制白色背景，允许自定义背景 */
+                /* color: black !important; 移除强制黑色文字 */
+                box-shadow: none !important; /* 打印时通常不需要阴影，或者可以保留但要小心边界 */
+                border: 1px solid #eee !important; /* 打印时用边框代替阴影 */
+                border-radius: 8px !important;
+                padding: 40px !important;
+                margin: 0 !important;
+                box-sizing: border-box !important;
+                
                 opacity: 1 !important;
                 visibility: visible !important;
                 transform: none !important;
                 left: auto !important;
                 top: auto !important;
-                overflow: hidden !important;
-                margin: 0 !important;
-                border: none !important;
-                box-shadow: none !important;
+                overflow: visible !important;
             }
+            
+            /* 确保文本颜色正常 */
+            h1, h2, h3, h4, h5, h6, p, span, div {
+                /* color: black !important; 移除强制黑色文字 */
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            
             /* 隐藏导航和无关元素 */
             button, .nav-controls, .pagination, .swiper-pagination, .swiper-button-next, .swiper-button-prev, .controls {
                 display: none !important;
             }
+            
             /* 重置滚动容器 */
             .scroll-container, .swiper-wrapper {
                 transform: none !important;
@@ -540,10 +622,11 @@ const App = () => {
                 overflow: visible !important;
                 display: block !important;
             }
-            /* 修复背景色打印问题 */
+            
             * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
+                max-height: none !important;
             }
         }
       </style>
@@ -554,7 +637,10 @@ const App = () => {
     // 注入逻辑：尝试在 </body> 前注入，如果没有 body 则加在最后
     if (code.includes('</body>')) {
       return code.replace('</body>', `${configScript}${reportPrintStyle}${selectionScript}</body>`);
+    } else if (code.includes('</html>')) {
+      return code.replace('</html>', `${configScript}${reportPrintStyle}${selectionScript}</html>`);
     } else {
+      // 没有任何结束标记，直接追加
       return code + configScript + reportPrintStyle + selectionScript;
     }
   };
@@ -690,6 +776,17 @@ const App = () => {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  // 当项目切换时，终止正在进行的生成任务
+  useEffect(() => {
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+    }
+    // 重置加载状态，避免UI卡在loading
+    setLoading(false);
+    setIsDemoLoading(false);
+  }, [currentProjectId]);
 
   // --- API Wrappers ---
   const handleLogin = async (values) => {
@@ -853,6 +950,11 @@ const App = () => {
           ]);
       }
       
+      // Reset selection state when loading a project
+      setIsSelectionMode(false);
+      setIsSelectionConfirmed(false);
+      setSelectedElements([]);
+
       // Determine tab
       if (p.report_content) setActiveTab('report');
       else if (p.demo_code) setActiveTab('demo');
@@ -874,9 +976,16 @@ const App = () => {
     setTechDoc('');
     setDemoCode('');
     setDemoPreviewCode('');
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    
     setReportContent('');
     setActiveTab('requirements');
     setMessages([{ role: 'assistant', content: '新项目已创建。请告诉我你的想法！' }]);
+    
+    // Reset selection state when creating a new project
+    setIsSelectionMode(false);
+    setIsSelectionConfirmed(false);
+    setSelectedElements([]);
   };
 
   const deleteProject = async (id, e) => {
@@ -907,21 +1016,36 @@ const App = () => {
   // --- Core Logic: Chat Driven Generation ---
 
   const extractHtml = (content) => {
+    if (!content) return '';
     let code = content;
-    if (code.includes('```html')) {
-      const parts = code.split('```html');
-      code = parts[parts.length - 1];
-      if (code.includes('```')) {
-        code = code.split('```')[0];
-      }
-    } else if (code.includes('```')) {
-      const parts = code.split('```');
-      if (parts.length % 2 === 0) {
-        code = parts[parts.length - 1];
-      } else {
-        code = parts[parts.length - 2] || parts[0];
-      }
+    
+    // 1. 尝试匹配标准的 Markdown 代码块
+    // 匹配 ```html ... ``` 或 ``` ... ```，不区分大小写
+    const htmlBlockRegex = /```(?:html|xml)?\s*([\s\S]*?)```/i;
+    const match = code.match(htmlBlockRegex);
+    
+    if (match && match[1]) {
+      return match[1].trim();
     }
+    
+    // 2. 如果没有代码块，尝试寻找 HTML 标签特征
+    // 寻找 <!DOCTYPE html> 或 <html> ... </html>
+    const docTypeIndex = code.indexOf('<!DOCTYPE html>');
+    const htmlTagIndex = code.indexOf('<html');
+    
+    if (docTypeIndex !== -1) {
+      return code.substring(docTypeIndex).trim();
+    }
+    
+    if (htmlTagIndex !== -1) {
+      return code.substring(htmlTagIndex).trim();
+    }
+
+    // 3. 兜底：如果看起来像 HTML (包含常见的标签)，则返回全部
+    if (code.includes('</div>') || code.includes('</body>') || code.includes('<script>')) {
+        return code.trim();
+    }
+
     return code.trim();
   };
 
@@ -1129,11 +1253,8 @@ const App = () => {
       setLoading(true);
       setIsDemoLoading(true); // 开始生成，显示预览区加载动画
       
-      // 在对话历史中显示选中的元素信息，让用户感到“代码块已经过去了”
-      const selectedContext = selectedElements.map(el => `\n\`\`\`html\n${el.html.substring(0, 300)}${el.html.length > 300 ? '...' : ''}\n\`\`\``).join('\n');
-      const fullUserMsg = `${userMsg}\n\n**选中的参考代码：**${selectedContext}`;
-      
-      setMessages(prev => [...prev, { role: 'user', content: fullUserMsg }]);
+      // 在对话历史中仅显示用户输入，不再显示冗长的代码块
+      setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
       setMessages(prev => [...prev, { role: 'assistant', content: `正在针对选中的 ${selectedElements.length} 个元素进行精准修改...` }]);
       
       if (abortControllerRef.current) abortControllerRef.current.abort();
@@ -1218,8 +1339,10 @@ const App = () => {
           <div key={idx} style={{ 
               alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
               maxWidth: '85%',
+              minWidth: '100px', // Prevent super narrow bubbles
               wordBreak: 'break-word',
-              overflowWrap: 'break-word'
+              overflowWrap: 'break-word',
+              overflow: 'hidden' // Ensure content doesn't spill out
           }}>
             <div style={{ 
                 background: msg.role === 'user' ? '#0FB698' : '#3B4E53',
@@ -1233,7 +1356,25 @@ const App = () => {
                 position: 'relative',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
             }}>
-              <ReactMarkdown>{msg.content}</ReactMarkdown>
+              <div style={{ overflowX: 'auto' }}> {/* Add horizontal scroll for code blocks */}
+                <ReactMarkdown components={{
+                  p: ({node, ...props}) => <p style={{ margin: 0, padding: 0 }} {...props} />,
+                  code: ({node, inline, className, children, ...props}) => {
+                    const match = /language-(\w+)/.exec(className || '')
+                    return !inline ? (
+                      <div style={{ background: 'rgba(0,0,0,0.3)', padding: '8px', borderRadius: '4px', margin: '8px 0', overflowX: 'auto', maxWidth: '100%' }}>
+                        <code className={className} style={{ fontFamily: 'monospace', fontSize: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }} {...props}>
+                          {children}
+                        </code>
+                      </div>
+                    ) : (
+                      <code className={className} style={{ background: 'rgba(0,0,0,0.2)', padding: '2px 4px', borderRadius: '3px', fontFamily: 'monospace' }} {...props}>
+                        {children}
+                      </code>
+                    )
+                  }
+                }}>{msg.content}</ReactMarkdown>
+              </div>
             </div>
           </div>
         ))}
@@ -1484,9 +1625,13 @@ const App = () => {
                    {reportContent && (
                        <Button 
                            icon={<FileMarkdownOutlined />} 
-                           onClick={() => {
-                               navigator.clipboard.writeText(reportContent);
-                               message.success('报告 HTML 代码已复制到剪贴板');
+                           onClick={async () => {
+                               try {
+                                   await navigator.clipboard.writeText(reportContent);
+                                   message.success('报告 HTML 代码已复制到剪贴板');
+                               } catch (err) {
+                                   message.error('复制失败，请手动复制');
+                               }
                            }}
                            style={{ background: 'transparent', color: 'rgba(255,255,255,0.65)', border: '1px solid #3B4E53' }}
                        >
@@ -1510,14 +1655,15 @@ const App = () => {
           </div>
           <div style={{ flex: 1, background: '#111315', padding: '20px', overflow: 'hidden', position: 'relative' }}>
               {loading && (
-                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(17,19,21,0.7)' }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1D1F21' }}>
                       <Spin size="large" tip="正在为您生成精美汇报报告..." />
                   </div>
               )}
-              {reportContent ? (
+              {reportContent && !loading ? (
                     <iframe 
                         id="report-iframe"
                         srcDoc={injectProjectId(reportContent, 'report')} 
+                        key={reportContent.length} // Fix: Preview flicker by keying on content length or similar stable value
                         style={{ 
                             width: '100%', 
                           height: '100%', 
@@ -1543,9 +1689,24 @@ const App = () => {
   const renderDemoPreview = () => (
       <div style={{ display: 'flex', height: '100%', background: '#111315' }}>
           <div style={{ flex: 1, padding: '0', borderRight: '1px solid #3B4E53', display: 'flex', flexDirection: 'column', background: '#1D1F21' }}>
-               <div style={{ padding: '12px 16px', borderBottom: '1px solid #3B4E53', background: '#1D1F21', display: 'flex', justifyContent: 'space-between' }}>
+               <div style={{ padding: '12px 16px', borderBottom: '1px solid #3B4E53', background: '#1D1F21', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                    <Text strong style={{ color: '#fff' }}>代码编辑</Text>
-                   <Text type="secondary" style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>支持实时编辑</Text>
+                   <Space>
+                     <Button 
+                        type="primary"
+                        size="small"
+                        icon={<HistoryOutlined />}
+                        onClick={() => {
+                            setDemoPreviewCode(demoCode);
+                            saveProject('demo', demoCode);
+                            message.success('已刷新预览');
+                        }}
+                        style={{ background: '#0FB698', borderColor: '#0FB698', fontSize: '12px' }}
+                     >
+                        运行代码
+                     </Button>
+                     <Text type="secondary" style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>失焦自动保存</Text>
+                   </Space>
                </div>
                <TextArea 
                   ref={editorRef}
@@ -1635,20 +1796,29 @@ const App = () => {
                       borderRadius: '4px',
                       overflow: 'hidden'
                   }}>
-                      <iframe 
-                           ref={iframeRef}
-                           srcDoc={injectProjectId(demoPreviewCode)} 
-                           style={{ width: '100%', height: '100%', border: 'none' }}
-                           title="原型预览"
-                           onLoad={() => {
-                             if (iframeRef.current && iframeRef.current.contentWindow) {
-                               iframeRef.current.contentWindow.postMessage({ 
-                                 type: 'SET_SELECTION_MODE', 
-                                 enabled: isSelectionMode 
-                               }, '*');
-                             }
-                           }}
-                       />
+                      {demoPreviewCode ? (
+                        <iframe 
+                             ref={iframeRef}
+                             key={demoPreviewCode.length} // Force re-render on content change
+                             srcDoc={injectProjectId(demoPreviewCode)} 
+                             style={{ width: '100%', height: '100%', border: 'none' }}
+                             title="原型预览"
+                             onLoad={() => {
+                               if (iframeRef.current && iframeRef.current.contentWindow) {
+                                 iframeRef.current.contentWindow.postMessage({ 
+                                   type: 'SET_SELECTION_MODE', 
+                                   enabled: isSelectionMode 
+                                 }, '*');
+                               }
+                             }}
+                         />
+                      ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.45)' }}>
+                              <CodeOutlined style={{ fontSize: 48, marginBottom: 16, opacity: 0.5 }} />
+                              <p>暂无预览内容</p>
+                              <Button size="small" type="link" onClick={() => setDemoPreviewCode(demoCode)}>尝试加载代码</Button>
+                          </div>
+                      )}
                   </div>
 
                   {/* 预览区加载遮罩 */}
@@ -1659,7 +1829,7 @@ const App = () => {
                           left: 0, 
                           right: 0, 
                           bottom: 0, 
-                          zIndex: 100, 
+                          zIndex: 1000, // Increased z-index
                           display: 'flex', 
                           alignItems: 'center', 
                           justifyContent: 'center', 
