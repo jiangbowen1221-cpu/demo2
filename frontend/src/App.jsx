@@ -3,7 +3,7 @@ import {
   Layout, Typography, Input, Button, Card, Tabs, List, Space, Tag, Divider, Avatar, message, Modal, Upload, Form, Checkbox, Menu, Spin, Dropdown, Tooltip, Table, InputNumber, DatePicker, Drawer, Empty
 } from 'antd';
 import { 
-  PlusOutlined, HistoryOutlined, SendOutlined, 
+  PlusOutlined, HistoryOutlined, SendOutlined, StopOutlined,
   RobotOutlined, UserOutlined, FileTextOutlined, 
   CodeOutlined, DesktopOutlined, AppstoreOutlined,
   FullscreenOutlined, FullscreenExitOutlined,
@@ -127,9 +127,13 @@ const SingleEditor = ({ content, setContent, title, onSave }) => {
     
     // 当内容从无到有变化时（例如刚生成完），自动切换到预览
     useEffect(() => {
-        if (content && !isPreview) {
-             // 这里可以加个逻辑，如果用户正在输入就不切，如果是生成的就切
-             // 简化处理：只要有内容且用户未显式切换过，初始化时默认预览
+        // Only auto-switch to preview if content exists AND we haven't manually set preview mode yet (initial load)
+        // Or if content just appeared from empty state
+        if (content && !isPreview && !title.includes('PRD')) { 
+             // 暂时不对 PRD 强制切换，防止编辑丢失。或者更稳妥的方式是完全移除这个自动切换逻辑，交给用户控制。
+             // 这里选择移除自动切换逻辑，除了新生成内容的情况，但如何判断新生成比较复杂。
+             // 简单起见，注释掉自动切换，防止切 Tab 导致状态重置。
+             // setIsPreview(true); 
         }
     }, [content]);
 
@@ -1243,7 +1247,19 @@ const App = () => {
     }
   }, [messages, currentProjectId]);
 
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+    setIsDemoLoading(false);
+    setMessages(prev => [...prev, { role: 'assistant', content: '🚫 已停止生成。' }]);
+    message.info('生成已暂停');
+  };
+
   const handleChatSubmit = async () => {
+    if (loading || isDemoLoading) return;
     if (!chatInput.trim()) return;
     const userMsg = chatInput;
     setChatInput('');
@@ -1296,9 +1312,34 @@ const App = () => {
       return;
     }
 
-    // Always generate/refine for the CURRENT active tab when chatting
-    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
-    await generateContent(activeTab, userMsg);
+    // Determine target tab based on user input (Intent Detection)
+    let targetTab = activeTab;
+    const lowerMsg = userMsg.toLowerCase();
+    
+    if (lowerMsg.includes('prd') || lowerMsg.includes('需求') || lowerMsg.includes('requirements')) {
+        targetTab = 'requirements';
+    } else if (lowerMsg.includes('ui') || lowerMsg.includes('设计') || lowerMsg.includes('product') || lowerMsg.includes('界面')) {
+        targetTab = 'product';
+    } else if (lowerMsg.includes('开发文档') || lowerMsg.includes('技术文档') || lowerMsg.includes('tech') || lowerMsg.includes('技术方案')) {
+        targetTab = 'tech';
+    } else if (lowerMsg.includes('原型') || lowerMsg.includes('代码') || lowerMsg.includes('demo') || lowerMsg.includes('预览') || lowerMsg.includes('网页')) {
+        targetTab = 'demo';
+    } else if (lowerMsg.includes('报告') || lowerMsg.includes('汇报') || lowerMsg.includes('report') || lowerMsg.includes('总结')) {
+        targetTab = 'report';
+    }
+
+    // Auto-switch tab if different
+    if (targetTab !== activeTab) {
+        setActiveTab(targetTab);
+        // Add a small system message to indicate switching
+        setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+        // Delay slightly to allow tab switch to render (though React state batching handles this, the visual feedback is nice)
+        await generateContent(targetTab, userMsg);
+    } else {
+        // Always generate/refine for the CURRENT active tab when chatting
+        setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+        await generateContent(activeTab, userMsg);
+    }
   };
 
   // --- Renderers ---
@@ -1332,9 +1373,9 @@ const App = () => {
   };
 
   const renderChatPanel = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1D1F21' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1D1F21', overflow: 'hidden' }}>
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', minHeight: 0 }}>
         {messages.map((msg, idx) => (
           <div key={idx} style={{ 
               alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
@@ -1342,7 +1383,8 @@ const App = () => {
               minWidth: '100px', // Prevent super narrow bubbles
               wordBreak: 'break-word',
               overflowWrap: 'break-word',
-              overflow: 'hidden' // Ensure content doesn't spill out
+              overflow: 'hidden', // Ensure content doesn't spill out
+              flexShrink: 0 // 防止消息被挤压
           }}>
             <div style={{ 
                 background: msg.role === 'user' ? '#0FB698' : '#3B4E53',
@@ -1483,6 +1525,7 @@ const App = () => {
               onPressEnter={(e) => {
                   if (!e.shiftKey) {
                       e.preventDefault();
+                      if (loading || isDemoLoading) return;
                       handleChatSubmit();
                   }
               }}
@@ -1514,7 +1557,25 @@ const App = () => {
                 </Space>
             <Space>
                 <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Enter 发送</Text>
-                <Button type="primary" icon={<SendOutlined />} onClick={handleChatSubmit} loading={loading} style={{ background: '#0FB698', borderColor: '#0FB698' }}>发送</Button>
+                {loading || isDemoLoading ? (
+                  <Button 
+                    danger
+                    icon={<StopOutlined />} 
+                    onClick={handleStopGeneration} 
+                    style={{ background: '#ff4d4f', borderColor: '#ff4d4f', color: '#fff' }}
+                  >
+                    停止
+                  </Button>
+                ) : (
+                  <Button 
+                    type="primary" 
+                    icon={<SendOutlined />} 
+                    onClick={handleChatSubmit} 
+                    style={{ background: '#0FB698', borderColor: '#0FB698' }}
+                  >
+                    发送
+                  </Button>
+                )}
             </Space>
         </div>
       </div>
@@ -1552,6 +1613,7 @@ const App = () => {
                         type="primary" 
                         size="large" 
                         onClick={handleNextStep}
+                        disabled={loading || isDemoLoading}
                         style={{ width: 200, borderRadius: 20, background: '#0FB698', borderColor: '#0FB698', boxShadow: '0 4px 10px rgba(15,182,152,0.3)' }}
                     >
                         下一步：{getNextTabName()}
@@ -2125,9 +2187,14 @@ const App = () => {
         .ant-list-item-meta-description {
           color: rgba(255,255,255,0.45) !important;
         }
+        /* 增强 Textarea Placeholder 可见度 */
+        textarea::placeholder {
+          color: rgba(255, 255, 255, 0.5) !important;
+          font-style: italic;
+        }
       `}</style>
       {renderHeader()}
-      <Layout style={{ background: '#111315' }}>
+      <Layout style={{ background: '#111315', overflow: 'hidden' }}>
         {/* Left Chat Sider */}
         <Sider width={350} theme="dark" style={{ borderRight: '1px solid #3B4E53', background: '#1D1F21' }}>
           {renderChatPanel()}
