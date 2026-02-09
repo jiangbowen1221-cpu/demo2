@@ -359,29 +359,34 @@ const App = () => {
 
   const injectProjectId = (code, type = 'demo') => {
     if (!code) return '';
+    let normalizedCode = code.trim();
+    const hasHtmlShell = /<html[\s>]/i.test(normalizedCode) || /<!doctype html>/i.test(normalizedCode);
+    if (!hasHtmlShell) {
+      normalizedCode = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${normalizedCode}</body></html>`;
+    }
     
     const selectionScript = `
       <script>
         (function() {
+          const safeRun = (fn) => { try { fn(); } catch (err) { console.warn('预览脚本异常已被忽略:', err); } };
+
           // --- 全局防跳转逻辑 ---
           // 拦截所有点击，防止任何形式的外部跳转或页面刷新
           document.addEventListener('click', (e) => {
             const link = e.target.closest('a');
             if (link) {
               const href = link.getAttribute('href');
-              
-              // 判定逻辑：只要不是明确的外部 http(s) 链接，或者只要是可能导致当前窗口跳转的链接，一律拦截
-              const isExternal = href && (href.startsWith('http://') || href.startsWith('https://'));
-              const isJavascriptVoid = href && href.includes('javascript:void');
-              
-              if (!isJavascriptVoid) {
-                // 如果是 # 或空，或者本地路径，或者 index.html 等
-                if (!href || href === '#' || href === '' || href.startsWith('/') || !isExternal) {
-                  e.preventDefault();
-                  console.log('【防跳转】拦截了链接点击:', href);
-                  return false;
-                }
+              if (!href || href === '') {
+                e.preventDefault();
+                console.log('【防跳转】拦截了链接点击:', href);
+                return false;
               }
+              const isHash = href.startsWith('#');
+              const isJavascriptVoid = href.includes('javascript:void');
+              if (isHash || isJavascriptVoid) return;
+              e.preventDefault();
+              console.log('【防跳转】拦截了链接点击:', href);
+              return false;
             }
           }, true);
 
@@ -396,21 +401,23 @@ const App = () => {
           let hoveredElement = null;
 
           // 样式注入：用于高亮显示
-          const style = document.createElement('style');
-          style.innerHTML = \`
-            [data-selection-hover="true"] {
-              outline: 2px dashed #0FB698 !important;
-              outline-offset: -2px !important;
-              cursor: crosshair !important;
-              transition: outline 0.1s ease !important;
-            }
-            [data-selected="true"] {
-              outline: 2px solid #00ECC8 !important;
-              outline-offset: -2px !important;
-              background-color: rgba(15, 182, 152, 0.1) !important;
-            }
-          \`;
-          document.head.appendChild(style);
+          safeRun(() => {
+            const style = document.createElement('style');
+            style.innerHTML = \`
+              [data-selection-hover="true"] {
+                outline: 2px dashed #0FB698 !important;
+                outline-offset: -2px !important;
+                cursor: crosshair !important;
+                transition: outline 0.1s ease !important;
+              }
+              [data-selected="true"] {
+                outline: 2px solid #00ECC8 !important;
+                outline-offset: -2px !important;
+                background-color: rgba(15, 182, 152, 0.1) !important;
+              }
+            \`;
+            document.head.appendChild(style);
+          });
 
           window.addEventListener('message', (e) => {
             if (e.data.type === 'SET_SELECTION_MODE') {
@@ -425,10 +432,12 @@ const App = () => {
           });
 
           const clearHover = () => {
-            document.querySelectorAll('[data-selection-hover="true"]').forEach(el => {
-              el.removeAttribute('data-selection-hover');
+            safeRun(() => {
+              document.querySelectorAll('[data-selection-hover="true"]').forEach(el => {
+                el.removeAttribute('data-selection-hover');
+              });
+              hoveredElement = null;
             });
-            hoveredElement = null;
           };
 
           document.addEventListener('mouseover', (e) => {
@@ -459,13 +468,14 @@ const App = () => {
                     
                     // 向上寻找最近的带有 data-trace-id 的元素
                     let el = e.target;
-                    let traceId = el.getAttribute('data-trace-id');
+                    let traceId = null;
+                    try { traceId = el.getAttribute('data-trace-id'); } catch(_) {}
                     
                     // 如果当前点击的元素没有 ID，就往父级找，最多找 5 层
                     let depth = 0;
                     while (!traceId && el.parentElement && depth < 5) {
                       el = el.parentElement;
-                      traceId = el.getAttribute('data-trace-id');
+                      try { traceId = el.getAttribute('data-trace-id'); } catch(_) {}
                       depth++;
                     }
                     
@@ -496,12 +506,14 @@ const App = () => {
                       return path.join(" > ");
                     };
 
-                    window.parent.postMessage({
-                      type: 'ELEMENT_SELECTED',
-                      selector: getSelector(el),
-                      traceId: traceId,
-                      html: el.outerHTML
-                    }, '*');
+                    safeRun(() => {
+                      window.parent.postMessage({
+                        type: 'ELEMENT_SELECTED',
+                        selector: getSelector(el),
+                        traceId: traceId,
+                        html: el.outerHTML
+                      }, '*');
+                    });
                 } else {
                     // 其他事件直接拦截
                     preventInteraction(e);
@@ -639,13 +651,13 @@ const App = () => {
     const configScript = type === 'demo' ? `<script>window.PROJECT_ID = ${currentProjectId};</script>` : '';
     
     // 注入逻辑：尝试在 </body> 前注入，如果没有 body 则加在最后
-    if (code.includes('</body>')) {
-      return code.replace('</body>', `${configScript}${reportPrintStyle}${selectionScript}</body>`);
-    } else if (code.includes('</html>')) {
-      return code.replace('</html>', `${configScript}${reportPrintStyle}${selectionScript}</html>`);
+    if (normalizedCode.includes('</body>')) {
+      return normalizedCode.replace('</body>', `${configScript}${reportPrintStyle}${selectionScript}</body>`);
+    } else if (normalizedCode.includes('</html>')) {
+      return normalizedCode.replace('</html>', `${configScript}${reportPrintStyle}${selectionScript}</html>`);
     } else {
       // 没有任何结束标记，直接追加
-      return code + configScript + reportPrintStyle + selectionScript;
+      return normalizedCode + configScript + reportPrintStyle + selectionScript;
     }
   };
   const fetchLicenses = async () => {
@@ -767,6 +779,8 @@ const App = () => {
     { role: 'assistant', content: '你好！我是你的智能开发助手。请告诉我你想做什么？' }
   ]);
   const messagesEndRef = useRef(null);
+  const requirementsAutosaveTimerRef = useRef(null);
+  const requirementsSaveInFlightRef = useRef(false);
 
   // --- Effects ---
   useEffect(() => {
@@ -1247,6 +1261,33 @@ const App = () => {
     }
   }, [messages, currentProjectId]);
 
+  /**
+   * PRD 自动保存：输入后短暂停顿就保存，避免切换或关闭丢失
+   */
+  const scheduleRequirementsAutosave = (content) => {
+    if (!content || !content.trim()) return;
+    if (!isLoggedIn) return;
+    if (requirementsAutosaveTimerRef.current) clearTimeout(requirementsAutosaveTimerRef.current);
+    requirementsAutosaveTimerRef.current = setTimeout(async () => {
+      if (requirementsSaveInFlightRef.current) return;
+      requirementsSaveInFlightRef.current = true;
+      try {
+        await saveProject('requirements', content);
+      } finally {
+        requirementsSaveInFlightRef.current = false;
+      }
+    }, 1500);
+  };
+
+  useEffect(() => {
+    scheduleRequirementsAutosave(requirementsDoc);
+    return () => {
+      if (requirementsAutosaveTimerRef.current) {
+        clearTimeout(requirementsAutosaveTimerRef.current);
+      }
+    };
+  }, [requirementsDoc, isLoggedIn, currentProjectId]);
+
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -1258,6 +1299,19 @@ const App = () => {
     message.info('生成已暂停');
   };
 
+  /**
+   * 明确意图识别：只有明确提到文档名称才自动切换
+   */
+  const detectExplicitTab = (text) => {
+    const lower = text.toLowerCase();
+    if (lower.includes('prd') || lower.includes('需求') || lower.includes('requirements')) return 'requirements';
+    if (lower.includes('ui设计') || lower.includes('设计文档') || lower.includes('界面设计') || lower.includes('product') || lower.includes('ui')) return 'product';
+    if (lower.includes('开发文档') || lower.includes('技术文档') || lower.includes('技术方案') || lower.includes('tech')) return 'tech';
+    if (lower.includes('原型') || lower.includes('demo') || lower.includes('预览') || lower.includes('网页')) return 'demo';
+    if (lower.includes('报告') || lower.includes('汇报') || lower.includes('report') || lower.includes('总结')) return 'report';
+    return null;
+  };
+
   const handleChatSubmit = async () => {
     if (loading || isDemoLoading) return;
     if (!chatInput.trim()) return;
@@ -1266,12 +1320,16 @@ const App = () => {
     
     // Check if we are in partial edit mode (selection mode with selected elements)
     if (activeTab === 'demo' && selectedElements.length > 0 && isSelectionConfirmed) {
+      const selectedSnapshot = [...selectedElements];
+      setIsSelectionMode(false);
+      setIsSelectionConfirmed(false);
+      setSelectedElements([]);
       setLoading(true);
       setIsDemoLoading(true); // 开始生成，显示预览区加载动画
       
       // 在对话历史中仅显示用户输入，不再显示冗长的代码块
       setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
-      setMessages(prev => [...prev, { role: 'assistant', content: `正在针对选中的 ${selectedElements.length} 个元素进行精准修改...` }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: `正在针对选中的 ${selectedSnapshot.length} 个元素进行精准修改...` }]);
       
       if (abortControllerRef.current) abortControllerRef.current.abort();
       abortControllerRef.current = new AbortController();
@@ -1282,7 +1340,7 @@ const App = () => {
           { 
             current_code: demoCode, 
             user_feedback: userMsg,
-            selected_elements: selectedElements 
+            selected_elements: selectedSnapshot 
           },
           (chunk) => {
              let code = chunk;
@@ -1312,24 +1370,11 @@ const App = () => {
       return;
     }
 
-    // Determine target tab based on user input (Intent Detection)
-    let targetTab = activeTab;
-    const lowerMsg = userMsg.toLowerCase();
-    
-    if (lowerMsg.includes('prd') || lowerMsg.includes('需求') || lowerMsg.includes('requirements')) {
-        targetTab = 'requirements';
-    } else if (lowerMsg.includes('ui') || lowerMsg.includes('设计') || lowerMsg.includes('product') || lowerMsg.includes('界面')) {
-        targetTab = 'product';
-    } else if (lowerMsg.includes('开发文档') || lowerMsg.includes('技术文档') || lowerMsg.includes('tech') || lowerMsg.includes('技术方案')) {
-        targetTab = 'tech';
-    } else if (lowerMsg.includes('原型') || lowerMsg.includes('代码') || lowerMsg.includes('demo') || lowerMsg.includes('预览') || lowerMsg.includes('网页')) {
-        targetTab = 'demo';
-    } else if (lowerMsg.includes('报告') || lowerMsg.includes('汇报') || lowerMsg.includes('report') || lowerMsg.includes('总结')) {
-        targetTab = 'report';
-    }
+    const explicitTab = detectExplicitTab(userMsg);
+    const targetTab = explicitTab || activeTab;
 
     // Auto-switch tab if different
-    if (targetTab !== activeTab) {
+    if (explicitTab && targetTab !== activeTab) {
         setActiveTab(targetTab);
         // Add a small system message to indicate switching
         setMessages(prev => [...prev, { role: 'user', content: userMsg }]);

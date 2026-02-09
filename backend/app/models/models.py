@@ -58,6 +58,13 @@ class FileUpload(SQLModel, table=True):
 class ProjectCreate(SQLModel):
     name: str
     description: Optional[str] = None
+    raw_requirement: Optional[str] = None
+    requirements_doc: Optional[str] = None
+    product_doc: Optional[str] = None
+    tech_doc: Optional[str] = None
+    demo_code: Optional[str] = None
+    report_content: Optional[str] = None
+    chat_history: Optional[str] = None
 
 class ProjectUpdate(SQLModel):
     name: Optional[str] = None
